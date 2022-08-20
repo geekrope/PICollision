@@ -16,6 +16,7 @@ abstract class PhysicalObject
 
 type Segment = { point1: number, point2: number };
 type Collision = { object1: PhysicalObject, object2: PhysicalObject, time: number };
+type CollisionResponse = { position: number, velocity: number };
 type CollisionsHandler = () => void;
 
 class Utils
@@ -219,18 +220,13 @@ class Wall implements PhysicalObject
 
 class PhysicalEngine
 {
-	private static _instance: PhysicalEngine;
-	private static readonly _interval: number = 10;
-	private static readonly _timeUnit: number = 1000;
+	private static get _interval(): number { return 10; }
+	private static get _timeUnit(): number { return 1000; }
+	private static get _epsilon(): number { return 1e-15; }
 
 	private _objects: PhysicalObject[];
 	private _timeOffset: number;
 	private _onUpdate: (() => void) | undefined;
-
-	public static get instance(): PhysicalEngine
-	{
-		return PhysicalEngine._instance ?? (PhysicalEngine._instance = new this());
-	}
 
 	public get objects(): PhysicalObject[]
 	{
@@ -243,15 +239,12 @@ class PhysicalEngine
 
 	private isMovingTowards(object1: PhysicalObject, object2: PhysicalObject): boolean
 	{
-		const delta = 1e-15;
 		const distance = object2.getPosition() - object1.getPosition();
 		const relativeVelocity = object1.getVelocity() - object2.getVelocity();
-		const movementDiretion = Math.abs(distance) > delta ? Math.sign(distance) : 0;
-		const velocityDiretion = Math.abs(relativeVelocity) > delta ? Math.sign(relativeVelocity) : 0;
+		const movementDiretion = Math.abs(distance) > PhysicalEngine._epsilon ? Math.sign(distance) : 0;
+		const velocityDiretion = Math.abs(relativeVelocity) > PhysicalEngine._epsilon ? Math.sign(relativeVelocity) : 0;
 
 		return movementDiretion == velocityDiretion;
-
-		//return object1.distance(object2) > object1.distance(object2, 1e-15);
 	}
 	private computeCollisionTime(object1: PhysicalObject, object2: PhysicalObject): number
 	{
@@ -287,52 +280,15 @@ class PhysicalEngine
 
 		return collision;
 	}
-	private tryToChangeProperites(target: PhysicalObject, velocity: number, position: number): void
+	private invokeUpdateEvent(): void
 	{
-		if (target instanceof Block)
+		if (this._onUpdate)
 		{
-			target.setPosition(position);
-			target.setVelocity(velocity);
+			this._onUpdate();
 		}
 	}
-	private update()
+	private updatePositions(processedObjects: PhysicalObject[], timeDelta: number)
 	{
-		const timeDelta = (Date.now() - this._timeOffset) / PhysicalEngine._timeUnit;
-
-		let processedObjects: Block[] = [];
-		let velocities = new Map<Block, number>();
-		let computed = false;
-
-		for (; !computed;)
-		{
-			const nearestCollision = this.getNearestCollision(this._objects, timeDelta);
-
-			if (nearestCollision)
-			{
-				const velocity1 = nearestCollision.object1.processCollision(nearestCollision.object2);
-				const velocity2 = nearestCollision.object2.processCollision(nearestCollision.object1);
-
-				const position1 = nearestCollision.object1.getPosition(nearestCollision.time);
-				const position2 = nearestCollision.object2.getPosition(nearestCollision.time);
-
-				this.tryToChangeProperites(nearestCollision.object1, velocity1, position1);
-				this.tryToChangeProperites(nearestCollision.object2, velocity2, position2);
-
-				if (nearestCollision.object1 instanceof Block)
-				{
-					processedObjects.push(nearestCollision.object1);
-				}
-				if (nearestCollision.object2 instanceof Block)
-				{
-					processedObjects.push(nearestCollision.object2);
-				}
-			}
-			else
-			{
-				computed = true;
-			}
-		}
-
 		this._objects.forEach((value) =>
 		{
 			if (value instanceof Block && !processedObjects.includes(value))
@@ -340,6 +296,63 @@ class PhysicalEngine
 				value.setPosition(value.getPosition(timeDelta));
 			}
 		});
+	}
+	private computeCollision(collision: Collision, target: 0 | 1): CollisionResponse
+	{
+		switch (target)
+		{
+			case 0:
+				return { position: collision.object1.getPosition(collision.time), velocity: collision.object1.processCollision(collision.object2) };
+			case 1:
+				return { position: collision.object2.getPosition(collision.time), velocity: collision.object2.processCollision(collision.object1) };
+			default:
+				throw new Error("Not implemeneted");
+		}
+	}
+	private processCollisions(timeDelta: number): PhysicalObject[]
+	{
+		let processedObjects: PhysicalObject[] = [];
+		let computed = false;
+
+		const response = (object: PhysicalObject, response: CollisionResponse) =>
+		{
+			if (object instanceof Block)
+			{
+				object.setPosition(response.position);
+				object.setVelocity(response.velocity);
+			}
+		}
+
+		for (; !computed;)
+		{
+			const nearestCollision = this.getNearestCollision(this._objects, timeDelta);
+
+			if (nearestCollision)
+			{
+				const properties1 = this.computeCollision(nearestCollision, 0);
+				const properties2 = this.computeCollision(nearestCollision, 1);
+
+				response(nearestCollision.object1, properties1);
+				response(nearestCollision.object2, properties2);
+
+				processedObjects.push(nearestCollision.object1, nearestCollision.object2);
+			}
+			else
+			{
+				computed = true;
+			}
+		}
+
+		return processedObjects;
+	}
+	private update()
+	{
+		const timeDelta = (Date.now() - this._timeOffset) / PhysicalEngine._timeUnit;
+		const velocities = new Map<Block, number>();
+
+		const processedObjects = this.processCollisions(timeDelta);
+
+		this.updatePositions(processedObjects, timeDelta);
 
 		velocities.forEach((value, key) =>
 		{
@@ -348,13 +361,10 @@ class PhysicalEngine
 
 		this._timeOffset = Date.now();
 
-		if (this._onUpdate)
-		{
-			this._onUpdate();
-		}
+		this.invokeUpdateEvent();
 	}
 
-	private constructor()
+	public constructor()
 	{
 		this._objects = [new Block(1, Math.pow(100, 0), 0, 2), new Block(1.5, Math.pow(100, 5), -1, 5), new Wall(0)];
 		this._timeOffset = Date.now();
@@ -363,39 +373,179 @@ class PhysicalEngine
 	}
 }
 
+class VisualEngine
+{
+	private _context: CanvasRenderingContext2D;
+	private _scale: number;
+	private _offset: DOMPoint;
+
+	private static get _thickness(): number { return 2; }
+
+	public get scale(): number
+	{
+		return this._scale;
+	}
+	public get offset(): DOMPoint
+	{
+		return this._offset;
+	}
+
+	public set scale(value: number)
+	{
+		this._scale = value;
+	}
+	public set offset(value: DOMPoint)
+	{
+		this._offset = value;
+	}
+
+	public clear()
+	{
+		this._context.fillStyle = "black";
+		this._context.fillRect(0, 0, this._context.canvas.width, this._context.canvas.height);
+	}
+	public drawWall(wall: Wall): void
+	{
+		const distance = 50;
+		const length = 30;
+		const angle = Math.PI / 4;
+		const height = this._offset.y;
+		const wallPosition = wall.position * this._scale + this._offset.x;
+
+		this._context.strokeStyle = "white";
+		this._context.lineWidth = VisualEngine._thickness;
+
+		this._context.beginPath();
+		this._context.moveTo(wallPosition, 0);
+		this._context.lineTo(wallPosition, height);
+		this._context.stroke();
+
+		this._context.beginPath();
+		this._context.lineWidth = 1;
+
+		for (let y = 0; y < height; y += distance)
+		{
+			this._context.moveTo(wallPosition, y);
+			this._context.lineTo(wallPosition - length * Math.sin(angle), length * Math.cos(angle) + y);
+		}
+
+		this._context.stroke();
+	}
+	public drawBlock(block: Block): void
+	{
+		const size = block.size * this._scale;
+		const position = new DOMPoint(block.properties.position * this._scale + this._offset.x, this._offset.y - size);
+
+		this._context.fillStyle = this._context.createLinearGradient(position.x, position.y, position.x + size, position.y + size);
+		this._context.fillStyle.addColorStop(0, "#434343");
+		this._context.fillStyle.addColorStop(1, "#000000");
+
+		this._context.strokeStyle = "white";
+		this._context.lineWidth = VisualEngine._thickness;
+
+		this._context.fillRect(position.x, position.y, size, size);
+		this._context.strokeRect(position.x, position.y, size, size);
+	}
+	public drawAxis(): void
+	{
+		this._context.strokeStyle = "white";
+		this._context.lineWidth = VisualEngine._thickness;
+
+		this._context.beginPath();
+		this._context.moveTo(this._offset.x, this._offset.y);
+		this._context.lineTo(this._context.canvas.width, this._offset.y);
+		this._context.stroke();
+	}
+	public drawCollisionsCount(count: number): void
+	{
+		this._context.fillStyle = "white";
+		this._context.fillText(count.toString(), 20, 20);
+	}
+
+	public constructor(context: CanvasRenderingContext2D, scale: number, offset: DOMPoint)
+	{
+		this._context = context;
+		this._scale = scale;
+		this._offset = offset;
+	}
+}
+
+const canvasId = "cnvs";
+let lastTouch: Touch;
+
+function resizeHandler(this: HTMLCanvasElement)
+{
+	this.width = innerWidth;
+	this.height = innerHeight;
+}
+function moveHandler(this: VisualEngine, event: MouseEvent)
+{
+	if (event.buttons == 1)
+	{
+		this.offset.x += event.movementX;
+		this.offset.y += event.movementY;
+	}
+}
+function touchHandler(this: VisualEngine, event: TouchEvent)
+{
+	const touch = event.touches.item(0);
+
+	if (event.touches.length == 1 && touch)
+	{
+		this.offset.x += touch.clientX - lastTouch.clientX;
+		this.offset.y += touch.clientY - lastTouch.clientY;
+
+		lastTouch = touch;
+	}
+}
+function updateView(visualEngine: VisualEngine, physicalEngine: PhysicalEngine)
+{
+	visualEngine.clear();
+
+	physicalEngine.objects.forEach((object) =>
+	{
+		if (object instanceof Block)
+		{
+			visualEngine.drawBlock(object);
+		}
+		else if (object instanceof Wall)
+		{
+			visualEngine.drawWall(object);
+		}
+	});
+
+	const first = physicalEngine.objects[0];
+
+	if (first instanceof Block)
+	{
+		visualEngine.drawCollisionsCount(first.collisions);
+	}
+
+	visualEngine.drawAxis();
+}
+
 this.onload = () =>
 {
-	const canvas = <HTMLCanvasElement>document.getElementById("cnvs");
-	const ctx = canvas.getContext("2d");
-	const offset = new DOMPoint(500, 500);
+	const canvas = <HTMLCanvasElement>document.getElementById(canvasId);
+	const context = canvas.getContext("2d");
+	const margin = 50;
+	const offset = new DOMPoint(margin, innerHeight - margin);
 	const scale = 100;
 
-	if (ctx)
+	if (canvas && context)
 	{
-		ctx.fillStyle = "black";
+		const visualEngine = new VisualEngine(context, scale, offset);
+		const physicalEngine = new PhysicalEngine();
 
-		PhysicalEngine.instance.onUpdate = () =>
+
+		physicalEngine.onUpdate = () =>
 		{
-			ctx.clearRect(0, 0, 2560, 1440);
-
-			PhysicalEngine.instance.objects.forEach((object) =>
-			{
-				if (object instanceof Block)
-				{
-					ctx.fillRect(object.properties.position * scale + offset.x, offset.y - object.size * scale, object.size * scale, object.size * scale);
-				}
-				else if (object instanceof Wall)
-				{
-					ctx.fillRect(object.position * scale + offset.x, 0, 1, 1440);
-				}
-
-				const first = PhysicalEngine.instance.objects[0];
-
-				if (first instanceof Block)
-				{
-					ctx.fillText(first.collisions.toString(), 20, 20);
-				}
-			})
+			updateView(visualEngine, physicalEngine);
 		}
+
+		resizeHandler.bind(canvas)();
+		window.onresize = resizeHandler.bind(canvas);
+		canvas.onmousemove = moveHandler.bind(visualEngine);
+		canvas.ontouchmove = touchHandler.bind(visualEngine);
 	}
 }
