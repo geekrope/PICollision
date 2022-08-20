@@ -135,8 +135,8 @@ class Wall {
     }
 }
 class PhysicalEngine {
-    constructor() {
-        this._objects = [new Block(1, Math.pow(100, 0), 0, 2), new Block(1.5, Math.pow(100, 5), -1, 5), new Wall(0)];
+    constructor(objects) {
+        this._objects = objects;
         this._timeOffset = Date.now();
         setInterval(this.update.bind(this), PhysicalEngine._interval);
     }
@@ -242,7 +242,8 @@ class VisualEngine {
         this._scale = scale;
         this._offset = offset;
     }
-    static get _thickness() { return 2; }
+    get _thickness() { return 2; }
+    get _font() { return "16px Courier New"; }
     get scale() {
         return this._scale;
     }
@@ -266,7 +267,7 @@ class VisualEngine {
         const height = this._offset.y;
         const wallPosition = wall.position * this._scale + this._offset.x;
         this._context.strokeStyle = "white";
-        this._context.lineWidth = VisualEngine._thickness;
+        this._context.lineWidth = this._thickness;
         this._context.beginPath();
         this._context.moveTo(wallPosition, 0);
         this._context.lineTo(wallPosition, height);
@@ -286,25 +287,33 @@ class VisualEngine {
         this._context.fillStyle.addColorStop(0, "#434343");
         this._context.fillStyle.addColorStop(1, "#000000");
         this._context.strokeStyle = "white";
-        this._context.lineWidth = VisualEngine._thickness;
+        this._context.lineWidth = this._thickness;
         this._context.fillRect(position.x, position.y, size, size);
         this._context.strokeRect(position.x, position.y, size, size);
+        this._context.fillStyle = "white";
+        this._context.font = this._font;
+        this._context.textBaseline = "bottom";
+        this._context.textAlign = "center";
+        this._context.fillText(`100^${Math.log(block.properties.mass) / Math.log(100)} kg`, position.x + size / 2, position.y);
     }
     drawAxis() {
         this._context.strokeStyle = "white";
-        this._context.lineWidth = VisualEngine._thickness;
+        this._context.lineWidth = this._thickness;
         this._context.beginPath();
         this._context.moveTo(this._offset.x, this._offset.y);
         this._context.lineTo(this._context.canvas.width, this._offset.y);
         this._context.stroke();
     }
     drawCollisionsCount(count) {
+        const text = `COLLISIONS : ${count}`;
+        const margin = 5;
         this._context.fillStyle = "white";
-        this._context.fillText(count.toString(), 20, 20);
+        this._context.font = this._font;
+        this._context.textBaseline = "top";
+        const textSize = this._context.measureText(text);
+        this._context.fillText(text, this._context.canvas.width - textSize.width - margin, margin);
     }
 }
-const canvasId = "cnvs";
-let lastTouch;
 function resizeHandler() {
     this.width = innerWidth;
     this.height = innerHeight;
@@ -313,14 +322,6 @@ function moveHandler(event) {
     if (event.buttons == 1) {
         this.offset.x += event.movementX;
         this.offset.y += event.movementY;
-    }
-}
-function touchHandler(event) {
-    const touch = event.touches.item(0);
-    if (event.touches.length == 1 && touch) {
-        this.offset.x += touch.clientX - lastTouch.clientX;
-        this.offset.y += touch.clientY - lastTouch.clientY;
-        lastTouch = touch;
     }
 }
 function updateView(visualEngine, physicalEngine) {
@@ -339,22 +340,39 @@ function updateView(visualEngine, physicalEngine) {
     }
     visualEngine.drawAxis();
 }
+function tryParseNumber(value) {
+    if (!value) {
+        return undefined;
+    }
+    else {
+        const asNumber = Number(value);
+        return !isNaN(asNumber) ? asNumber : undefined;
+    }
+}
+function getUrlParams() {
+    const query = new URL(window.location.href).searchParams;
+    const mass1 = query.get("m1");
+    const mass2 = query.get("m2");
+    const size1 = query.get("s1");
+    const size2 = query.get("s2");
+    return { mass1: tryParseNumber(mass1), mass2: tryParseNumber(mass2), size1: tryParseNumber(size1), size2: tryParseNumber(size2) };
+}
 this.onload = () => {
-    const canvas = document.getElementById(canvasId);
+    const canvas = document.getElementById("cnvs");
     const context = canvas.getContext("2d");
     const margin = 50;
     const offset = new DOMPoint(margin, innerHeight - margin);
     const scale = 100;
+    const params = getUrlParams();
     if (canvas && context) {
         const visualEngine = new VisualEngine(context, scale, offset);
-        const physicalEngine = new PhysicalEngine();
+        const physicalEngine = new PhysicalEngine([new Block(params.size1 ?? 1, params.mass1 ?? Math.pow(100, 0), 0, 2), new Block(params.size2 ?? 1.5, params.mass2 ?? Math.pow(100, 5), -1, 5), new Wall(0)]);
         physicalEngine.onUpdate = () => {
             updateView(visualEngine, physicalEngine);
         };
         resizeHandler.bind(canvas)();
         window.onresize = resizeHandler.bind(canvas);
         canvas.onmousemove = moveHandler.bind(visualEngine);
-        canvas.ontouchmove = touchHandler.bind(visualEngine);
     }
 };
 //# sourceMappingURL=app.js.map
