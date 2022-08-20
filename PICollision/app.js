@@ -310,8 +310,8 @@ class VisualEngine {
         this._context.fillStyle = "white";
         this._context.font = this._font;
         this._context.textBaseline = "top";
-        const textSize = this._context.measureText(text);
-        this._context.fillText(text, this._context.canvas.width - textSize.width - margin, margin);
+        this._context.textAlign = "end";
+        this._context.fillText(text, this._context.canvas.width - margin, margin);
     }
 }
 function resizeHandler() {
