@@ -378,26 +378,50 @@ class VisualEngine
 	private _context: CanvasRenderingContext2D;
 	private _scale: number;
 	private _offset: DOMPoint;
+	private _zoomed: boolean;
 
 	private get _thickness(): number { return 2; }
 	private get _font(): string { return "16px Courier New"; }
+	private get _multiplier(): number { return 2; }
+
+	private getMatrix(scale: number, offset: DOMPoint)
+	{
+		return new DOMMatrix([scale, 0, 0, scale, offset.x, offset.y]);
+	}
+	private getZoomOffset(fixedPoint: DOMPoint, currentMatrix: DOMMatrix, nextMatrix: DOMMatrix): DOMPoint
+	{
+		const originalPoint = this.restore(fixedPoint, currentMatrix);
+		const transformedPoint = this.transform(originalPoint, nextMatrix);
+
+		return new DOMPoint(fixedPoint.x - transformedPoint.x, fixedPoint.y - transformedPoint.y);
+	}
 
 	public get scale(): number
 	{
 		return this._scale;
 	}
-	public get offset(): DOMPoint
+	public get offset(): DOMPointReadOnly
 	{
 		return this._offset;
 	}
 
-	public set scale(value: number)
+	public zoom(relativePoint?: DOMPoint)
 	{
-		this._scale = value;
+		const currentScale = this._scale;
+		const nextScale = this._zoomed ? this._scale / this._multiplier : this._scale * this._multiplier;
+
+		this._scale = nextScale;
+		this._zoomed = !this._zoomed;
+
+		if (relativePoint)
+		{
+			this.move(this.getZoomOffset(relativePoint, this.getMatrix(currentScale, this._offset), this.getMatrix(nextScale, this._offset)));
+		}
 	}
-	public set offset(value: DOMPoint)
+	public move(value: DOMPoint)
 	{
-		this._offset = value;
+		this._offset.x += value.x;
+		this._offset.y += value.y;
 	}
 
 	public clear()
@@ -476,12 +500,23 @@ class VisualEngine
 
 		this._context.fillText(text, this._context.canvas.width - margin, margin);
 	}
+	public transform(point: DOMPoint, matrix: DOMMatrix): DOMPoint
+	{
+		return new DOMPoint(point.x * matrix.a + point.y * matrix.c + matrix.e, point.x * matrix.b + point.y * matrix.d + matrix.f);
+	}
+	public restore(point: DOMPoint, matrix: DOMMatrix): DOMPoint
+	{
+		const y = (point.x * matrix.b - point.y * matrix.a + matrix.a * matrix.f - matrix.b * matrix.e) / (matrix.b * matrix.c - matrix.a * matrix.d);
+		const x = (point.x - matrix.e - matrix.c * y) / matrix.a;
+		return new DOMPoint(x, y);
+	}
 
 	public constructor(context: CanvasRenderingContext2D, scale: number, offset: DOMPoint)
 	{
 		this._context = context;
 		this._scale = scale;
 		this._offset = offset;
+		this._zoomed = false;
 	}
 }
 
@@ -490,12 +525,15 @@ function resizeHandler(this: HTMLCanvasElement)
 	this.width = innerWidth;
 	this.height = innerHeight;
 }
+function scaleHandler(this: VisualEngine, event: MouseEvent)
+{
+	this.zoom(new DOMPoint(event.offsetX, event.offsetY));
+}
 function moveHandler(this: VisualEngine, event: MouseEvent)
 {
 	if (event.buttons == 1)
 	{
-		this.offset.x += event.movementX;
-		this.offset.y += event.movementY;
+		this.move(new DOMPoint(event.movementX, event.movementY));
 	}
 }
 function updateView(visualEngine: VisualEngine, physicalEngine: PhysicalEngine)
@@ -568,7 +606,8 @@ this.onload = () =>
 		}
 
 		resizeHandler.bind(canvas)();
-		window.onresize = resizeHandler.bind(canvas);
-		canvas.onmousemove = moveHandler.bind(visualEngine);
+		window.addEventListener("resize", resizeHandler.bind(canvas));
+		canvas.addEventListener("dblclick", scaleHandler.bind(visualEngine));
+		canvas.addEventListener("mousemove", moveHandler.bind(visualEngine));
 	}
 }

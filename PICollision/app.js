@@ -241,20 +241,37 @@ class VisualEngine {
         this._context = context;
         this._scale = scale;
         this._offset = offset;
+        this._zoomed = false;
     }
     get _thickness() { return 2; }
     get _font() { return "16px Courier New"; }
+    get _multiplier() { return 2; }
+    getMatrix(scale, offset) {
+        return new DOMMatrix([scale, 0, 0, scale, offset.x, offset.y]);
+    }
+    getZoomOffset(fixedPoint, currentMatrix, nextMatrix) {
+        const originalPoint = this.restore(fixedPoint, currentMatrix);
+        const transformedPoint = this.transform(originalPoint, nextMatrix);
+        return new DOMPoint(fixedPoint.x - transformedPoint.x, fixedPoint.y - transformedPoint.y);
+    }
     get scale() {
         return this._scale;
     }
     get offset() {
         return this._offset;
     }
-    set scale(value) {
-        this._scale = value;
+    zoom(relativePoint) {
+        const currentScale = this._scale;
+        const nextScale = this._zoomed ? this._scale / this._multiplier : this._scale * this._multiplier;
+        this._scale = nextScale;
+        this._zoomed = !this._zoomed;
+        if (relativePoint) {
+            this.move(this.getZoomOffset(relativePoint, this.getMatrix(currentScale, this._offset), this.getMatrix(nextScale, this._offset)));
+        }
     }
-    set offset(value) {
-        this._offset = value;
+    move(value) {
+        this._offset.x += value.x;
+        this._offset.y += value.y;
     }
     clear() {
         this._context.fillStyle = "black";
@@ -313,15 +330,25 @@ class VisualEngine {
         this._context.textAlign = "end";
         this._context.fillText(text, this._context.canvas.width - margin, margin);
     }
+    transform(point, matrix) {
+        return new DOMPoint(point.x * matrix.a + point.y * matrix.c + matrix.e, point.x * matrix.b + point.y * matrix.d + matrix.f);
+    }
+    restore(point, matrix) {
+        const y = (point.x * matrix.b - point.y * matrix.a + matrix.a * matrix.f - matrix.b * matrix.e) / (matrix.b * matrix.c - matrix.a * matrix.d);
+        const x = (point.x - matrix.e - matrix.c * y) / matrix.a;
+        return new DOMPoint(x, y);
+    }
 }
 function resizeHandler() {
     this.width = innerWidth;
     this.height = innerHeight;
 }
+function scaleHandler(event) {
+    this.zoom(new DOMPoint(event.offsetX, event.offsetY));
+}
 function moveHandler(event) {
     if (event.buttons == 1) {
-        this.offset.x += event.movementX;
-        this.offset.y += event.movementY;
+        this.move(new DOMPoint(event.movementX, event.movementY));
     }
 }
 function updateView(visualEngine, physicalEngine) {
@@ -371,8 +398,9 @@ this.onload = () => {
             updateView(visualEngine, physicalEngine);
         };
         resizeHandler.bind(canvas)();
-        window.onresize = resizeHandler.bind(canvas);
-        canvas.onmousemove = moveHandler.bind(visualEngine);
+        window.addEventListener("resize", resizeHandler.bind(canvas));
+        window.addEventListener("dblclick", scaleHandler.bind(visualEngine));
+        canvas.addEventListener("mousemove", moveHandler.bind(visualEngine));
     }
 };
 //# sourceMappingURL=app.js.map
