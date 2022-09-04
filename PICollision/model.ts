@@ -1,10 +1,4 @@
-﻿interface MaterialPointReadonly
-{
-	readonly impulse: number;
-	readonly mass: number;
-	readonly velocity: number;
-	readonly position: number;
-}
+﻿
 
 abstract class PhysicalObject
 {
@@ -14,10 +8,44 @@ abstract class PhysicalObject
 	public abstract processCollision(object: PhysicalObject): number;
 }
 
+interface MaterialPointReadonly
+{
+	readonly impulse: number;
+	readonly mass: number;
+	readonly velocity: number;
+	readonly position: number;
+}
+
 type Segment = { point1: number, point2: number };
 type Collision = { object1: PhysicalObject, object2: PhysicalObject, time: number };
 type CollisionResponse = { position: number, velocity: number };
 type CollisionsHandler = () => void;
+
+class HorizontalAxis
+{
+	private _y: number;
+	public get y()
+	{
+		return this._y;
+	}
+	public constructor(y: number)
+	{
+		this._y = y;
+	}
+}
+
+class CollisionsCount
+{
+	private _source: Block;
+	public get text()
+	{
+		return `COLLISIONS: ${this._source.collisions}`;
+	}
+	public constructor(source: Block)
+	{
+		this._source = source;
+	}
+}
 
 class Utils
 {
@@ -370,244 +398,5 @@ class PhysicalEngine
 		this._timeOffset = Date.now();
 
 		setInterval(this.update.bind(this), PhysicalEngine._interval);
-	}
-}
-
-class VisualEngine
-{
-	private _context: CanvasRenderingContext2D;
-	private _scale: number;
-	private _offset: DOMPoint;
-	private _zoomed: boolean;
-
-	private get _thickness(): number { return 2; }
-	private get _font(): string { return "16px Courier New"; }
-	private get _multiplier(): number { return 2; }
-
-	private getMatrix(scale: number, offset: DOMPoint)
-	{
-		return new DOMMatrix([scale, 0, 0, scale, offset.x, offset.y]);
-	}
-	private getZoomOffset(fixedPoint: DOMPoint, currentMatrix: DOMMatrix, nextMatrix: DOMMatrix): DOMPoint
-	{
-		const originalPoint = this.restore(fixedPoint, currentMatrix);
-		const transformedPoint = this.transform(originalPoint, nextMatrix);
-
-		return new DOMPoint(fixedPoint.x - transformedPoint.x, fixedPoint.y - transformedPoint.y);
-	}
-
-	public get scale(): number
-	{
-		return this._scale;
-	}
-	public get offset(): DOMPointReadOnly
-	{
-		return this._offset;
-	}
-
-	public zoom(relativePoint?: DOMPoint)
-	{
-		const currentScale = this._scale;
-		const nextScale = this._zoomed ? this._scale / this._multiplier : this._scale * this._multiplier;
-
-		this._scale = nextScale;
-		this._zoomed = !this._zoomed;
-
-		if (relativePoint)
-		{
-			this.move(this.getZoomOffset(relativePoint, this.getMatrix(currentScale, this._offset), this.getMatrix(nextScale, this._offset)));
-		}
-	}
-	public move(value: DOMPoint)
-	{
-		this._offset.x += value.x;
-		this._offset.y += value.y;
-	}
-
-	public clear()
-	{
-		this._context.fillStyle = "black";
-		this._context.fillRect(0, 0, this._context.canvas.width, this._context.canvas.height);
-	}
-	public drawWall(wall: Wall): void
-	{
-		const distance = 50;
-		const length = 30;
-		const angle = Math.PI / 4;
-		const height = this._offset.y;
-		const wallPosition = wall.position * this._scale + this._offset.x;
-
-		this._context.strokeStyle = "white";
-		this._context.lineWidth = this._thickness;
-
-		this._context.beginPath();
-		this._context.moveTo(wallPosition, 0);
-		this._context.lineTo(wallPosition, height);
-		this._context.stroke();
-
-		this._context.beginPath();
-		this._context.lineWidth = 1;
-
-		for (let y = 0; y < height; y += distance)
-		{
-			this._context.moveTo(wallPosition, y);
-			this._context.lineTo(wallPosition - length * Math.sin(angle), length * Math.cos(angle) + y);
-		}
-
-		this._context.stroke();
-	}
-	public drawBlock(block: Block): void
-	{
-		const size = block.size * this._scale;
-		const position = new DOMPoint(block.properties.position * this._scale + this._offset.x, this._offset.y - size);
-
-		this._context.fillStyle = this._context.createLinearGradient(position.x, position.y, position.x + size, position.y + size);
-		this._context.fillStyle.addColorStop(0, "#434343");
-		this._context.fillStyle.addColorStop(1, "#000000");
-
-		this._context.strokeStyle = "white";
-		this._context.lineWidth = this._thickness;
-
-		this._context.fillRect(position.x, position.y, size, size);
-		this._context.strokeRect(position.x, position.y, size, size);
-
-		this._context.fillStyle = "white";
-		this._context.font = this._font;
-		this._context.textBaseline = "bottom";
-		this._context.textAlign = "center";
-
-		this._context.fillText(`100^${Math.log(block.properties.mass) / Math.log(100)} kg`, position.x + size / 2, position.y);
-	}
-	public drawAxis(): void
-	{
-		this._context.strokeStyle = "white";
-		this._context.lineWidth = this._thickness;
-
-		this._context.beginPath();
-		this._context.moveTo(this._offset.x, this._offset.y);
-		this._context.lineTo(this._context.canvas.width, this._offset.y);
-		this._context.stroke();
-	}
-	public drawCollisionsCount(count: number): void
-	{
-		const text = `COLLISIONS : ${count}`;
-		const margin = 5;
-
-		this._context.fillStyle = "white";
-		this._context.font = this._font;
-		this._context.textBaseline = "top";
-		this._context.textAlign = "end";
-
-		this._context.fillText(text, this._context.canvas.width - margin, margin);
-	}
-	public transform(point: DOMPoint, matrix: DOMMatrix): DOMPoint
-	{
-		return new DOMPoint(point.x * matrix.a + point.y * matrix.c + matrix.e, point.x * matrix.b + point.y * matrix.d + matrix.f);
-	}
-	public restore(point: DOMPoint, matrix: DOMMatrix): DOMPoint
-	{
-		const y = (point.x * matrix.b - point.y * matrix.a + matrix.a * matrix.f - matrix.b * matrix.e) / (matrix.b * matrix.c - matrix.a * matrix.d);
-		const x = (point.x - matrix.e - matrix.c * y) / matrix.a;
-		return new DOMPoint(x, y);
-	}
-
-	public constructor(context: CanvasRenderingContext2D, scale: number, offset: DOMPoint)
-	{
-		this._context = context;
-		this._scale = scale;
-		this._offset = offset;
-		this._zoomed = false;
-	}
-}
-
-function resizeHandler(this: HTMLCanvasElement)
-{
-	this.width = innerWidth;
-	this.height = innerHeight;
-}
-function scaleHandler(this: VisualEngine, event: MouseEvent)
-{
-	this.zoom(new DOMPoint(event.offsetX, event.offsetY));
-}
-function moveHandler(this: VisualEngine, event: MouseEvent)
-{
-	if (event.buttons == 1)
-	{
-		this.move(new DOMPoint(event.movementX, event.movementY));
-	}
-}
-function updateView(visualEngine: VisualEngine, physicalEngine: PhysicalEngine)
-{
-	visualEngine.clear();
-
-	physicalEngine.objects.forEach((object) =>
-	{
-		if (object instanceof Block)
-		{
-			visualEngine.drawBlock(object);
-		}
-		else if (object instanceof Wall)
-		{
-			visualEngine.drawWall(object);
-		}
-	});
-
-	const first = physicalEngine.objects[0];
-
-	if (first instanceof Block)
-	{
-		visualEngine.drawCollisionsCount(first.collisions);
-	}
-
-	visualEngine.drawAxis();
-}
-function tryParseNumber(value: string | null): number | undefined
-{
-	if (!value)
-	{
-		return undefined;
-	}
-	else
-	{
-		const asNumber = Number(value);
-
-		return !isNaN(asNumber) ? asNumber : undefined;
-	}
-}
-function getUrlParams(): { mass1: number | undefined, mass2: number | undefined, size1: number | undefined, size2: number | undefined }
-{
-	const query = new URL(window.location.href).searchParams;
-
-	const mass1 = query.get("m1");
-	const mass2 = query.get("m2");
-	const size1 = query.get("s1");
-	const size2 = query.get("s2");
-
-	return { mass1: tryParseNumber(mass1), mass2: tryParseNumber(mass2), size1: tryParseNumber(size1), size2: tryParseNumber(size2) };
-}
-
-this.onload = () =>
-{
-	const canvas = <HTMLCanvasElement>document.getElementById("cnvs");
-	const context = canvas.getContext("2d");
-	const margin = 50;
-	const offset = new DOMPoint(margin, innerHeight - margin);
-	const scale = 100;
-	const params = getUrlParams();
-
-	if (canvas && context)
-	{
-		const visualEngine = new VisualEngine(context, scale, offset);
-		const physicalEngine = new PhysicalEngine([new Block(params.size1 ?? 1, params.mass1 ?? Math.pow(100, 0), 0, 2), new Block(params.size2 ?? 1.5, params.mass2 ?? Math.pow(100, 5), -1, 5), new Wall(0)]);
-
-		physicalEngine.onUpdate = () =>
-		{
-			updateView(visualEngine, physicalEngine);
-		}
-
-		resizeHandler.bind(canvas)();
-		window.addEventListener("resize", resizeHandler.bind(canvas));
-		canvas.addEventListener("dblclick", scaleHandler.bind(visualEngine));
-		canvas.addEventListener("mousemove", moveHandler.bind(visualEngine));
 	}
 }

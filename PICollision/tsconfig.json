@@ -22,7 +22,8 @@
     "noPropertyAccessFromIndexSignature": true,
     "noUnusedParameters": true,
     "allowUnreachableCode": false,
-    "allowUnusedLabels": false
+    "allowUnusedLabels": false,
+    "outFile": "src/index.js"
   },
   "exclude": [
     "node_modules",
