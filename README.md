@@ -9,3 +9,5 @@ m2 - Second body mass
 s1 - First body size
 
 s2 - Second body size
+
+<a href="https://geekrope.github.io/PICollision/PICollision/">Source</a>
