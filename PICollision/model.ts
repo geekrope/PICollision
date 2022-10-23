@@ -298,7 +298,7 @@ class PhysicalEngine
 				{
 					const time = this.computeCollisionTime(object1, object2);
 
-					if (time < timeDelta && (!collision || (time < collision.time)))
+					if (time <= timeDelta && (!collision || (time <= collision.time)))
 					{
 						collision = { object1: object1, object2: object2, time: time };
 					}

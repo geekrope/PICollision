@@ -23,10 +23,12 @@
     "noUnusedParameters": true,
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
-    "outFile": "src/index.js"
+    "outFile": "src/index.js",
+    "rootDir": "./"
   },
   "exclude": [
     "node_modules",
     "wwwroot"
-  ]
+  ],
+  "compileOnSave": true
 }
