@@ -11,3 +11,6 @@ s1 - First body size
 s2 - Second body size
 
 <a href="https://geekrope.github.io/PICollision/PICollision/">Source</a>
+
+![изображение](https://user-images.githubusercontent.com/51045651/197386487-a8871857-9759-447c-a5e7-48f5bce521b1.png)
+
